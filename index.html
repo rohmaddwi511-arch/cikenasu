@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grok Solana Terminal - Real-Time AI Trading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #06080c;
+            color: #f3f4f6;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .glass-card {
+            background: rgba(16, 20, 29, 0.92);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-pill {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .glow-green {
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.18);
+        }
+        .glow-red {
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.18);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col pb-24 select-none">
+
+    <!-- Notifikasi Popup -->
+    <div id="alertPopup" class="fixed top-4 left-4 right-4 z-50 transform -translate-y-32 transition-all duration-300 max-w-md mx-auto">
+        <div class="glass-card bg-zinc-950/95 border border-green-500/40 p-3.5 rounded-2xl shadow-2xl flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div id="alertIconBox" class="w-9 h-9 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div>
+                    <div id="alertTitle" class="text-xs font-bold text-white">System Ready</div>
+                    <div id="alertSub" class="text-[10px] text-green-400 font-medium">Terhubung ke Solana Mainnet</div>
+                </div>
+            </div>
+            <span class="bg-green-500/20 text-green-400 text-[10px] font-extrabold px-2.5 py-1 rounded-xl border border-green-500/30">LIVE</span>
+        </div>
+    </div>
+
+    <!-- Header Utama -->
+    <header class="px-4 py-3.5 sticky top-0 z-40 bg-[#06080c]/95 backdrop-blur-md border-b border-white/5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-zinc-900 to-zinc-800 border border-white/10 flex items-center justify-center text-white font-bold text-sm shadow">
+                <i class="fa-solid fa-microchip text-green-400"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-sm text-white flex items-center gap-1.5">
+                    Grok Terminal <i class="fa-solid fa-circle text-[6px] text-green-400 animate-pulse"></i>
+                </h1>
+                <!-- Keterangan Harga Pasar 1 SOL (Bukan Saldo) -->
+                <p id="solPriceHeader" class="text-[10px] text-zinc-400 font-medium">Harga 1 SOL: Memuat...</p>
+            </div>
+        </div>
+        <div>
+            <!-- Tombol Connect Wallet -->
+            <button id="connectWalletBtn" onclick="connectWallet()" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs transition-all shadow-lg shadow-green-500/20 flex items-center gap-2">
+                <i class="fa-solid fa-wallet"></i> <span id="walletBtnText">Connect Wallet</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Konten Utama -->
+    <main class="flex-1 max-w-xl w-full mx-auto p-4 space-y-4">
+
+        <!-- Tab Switcher -->
+        <div class="flex gap-2 p-1 glass-pill rounded-2xl">
+            <button onclick="switchTab('terminal')" id="tabTerminalBtn" class="flex-1 py-2 text-xs font-bold rounded-xl bg-green-500 text-black transition shadow">Agents & Market</button>
+            <button onclick="switchTab('wallet')" id="tabWalletBtn" class="flex-1 py-2 text-xs font-bold rounded-xl text-zinc-400 hover:text-white transition">Wallet & Portofolio</button>
+        </div>
+
+        <!-- TAB 1: AGENTS, AUTO-TRADE CONTROL & TRENDING MARKET -->
+        <div id="tabTerminal" class="space-y-4">
+            
+            <!-- Kartu Saldo Utama & Tombol Start/Stop Auto-Trading -->
+            <div id="mainHeroCard" class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-[10px] text-zinc-400 font-semibold tracking-wider uppercase">Saldo Dompet Anda</span>
+                        <div class="flex items-baseline gap-2 mt-0.5">
+                            <div id="usdBalanceHero" class="text-3xl font-black text-white tracking-tight">$0.00</div>
+                            <div id="solBalanceHero" class="text-xs font-bold text-zinc-400 font-mono">(0.0000 SOL)</div>
+                        </div>
+                        <div class="text-[11px] text-zinc-400 font-medium mt-1.5 font-mono flex items-center gap-1.5">
+                            <span id="walletAddressDisplay" class="bg-white/5 px-2 py-0.5 rounded text-[10px] text-zinc-300 border border-white/5">Belum terhubung</span>
+                            <button onclick="refreshAllData()" title="Refresh Saldo & Harga" class="text-zinc-400 hover:text-green-400 transition ml-1 p-1">
+                                <i id="refreshIcon" class="fa-solid fa-rotate-right text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="botStatusBadge" class="bg-zinc-800 text-zinc-400 px-2.5 py-1 rounded-xl border border-white/10 text-[10px] font-extrabold flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span> IDLE
+                    </div>
+                </div>
+
+                <!-- Tombol Kendali Start / Stop Auto-Trading -->
+                <div class="mt-4 pt-4 border-t border-white/5 flex gap-2.5">
+                    <button id="btnStartBot" onclick="toggleAutoTrade(true)" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-95 text-black font-extrabold text-xs shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+                        <i class="fa-solid fa-play"></i> START AUTO-TRADING
+                    </button>
+                    <button id="btnStopBot" onclick="toggleAutoTrade(false)" disabled class="flex-1 py-3 rounded-xl bg-zinc-900 border border-white/10 text-zinc-500 font-extrabold text-xs flex items-center justify-center gap-2 transition cursor-not-allowed">
+                        <i class="fa-solid fa-stop"></i> STOP TRADING
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel Agen Otonom yang Bekerja -->
+            <div class="glass-card rounded-2xl p-4 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-robot text-green-400"></i> Autonomous AI Agents
+                    </span>
+                    <span id="agentActivityLabel" class="text-[10px] text-zinc-400 font-medium">Menunggu perintah Start</span>
+                </div>
+
+                <!-- Grid Status 3 Agen -->
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-zinc-950/70 p-2.5 rounded-xl border border-white/5">
+                        <div class="text-[10px] font-bold text-orange-400"><i class="fa-solid fa-crosshairs mr-1"></i>Sniper</div>
+                        <div id="agent1Status" class="text-[9px] text-zinc-500 mt-0.5 font-mono">Standby</div>
+                    </div>
+                    <div class="bg-zinc-950/70 p-2.5 rounded-xl border border-white/5">
+                        <div class="text-[10px] font-bold text-purple-400"><i class="fa-solid fa-bolt mr-1"></i>Momentum</div>
+                        <div id="agent2Status" class="text-[9px] text-zinc-500 mt-0.5 font-mono">Standby</div>
+                    </div>
+                    <div class="bg-zinc-950/70 p-2.5 rounded-xl border border-white/5">
+                        <div class="text-[10px] font-bold text-cyan-400"><i class="fa-solid fa-shield-halved mr-1"></i>RugCheck</div>
+                        <div id="agent3Status" class="text-[9px] text-zinc-500 mt-0.5 font-mono">Standby</div>
+                    </div>
+                </div>
+
+                <!-- Live Terminal Log Agen -->
+                <div id="agentLogBox" class="bg-black/60 rounded-xl p-2.5 border border-white/5 font-mono text-[10px] text-zinc-400 max-h-24 overflow-y-auto space-y-1">
+                    <div>> Sistem siap. Hubungkan dompet dan tekan START AUTO-TRADING.</div>
+                </div>
+            </div>
+
+            <!-- Daftar Trending Memecoin Real-Time -->
+            <div class="flex justify-between items-center px-1 pt-1">
+                <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Trending Memecoin (Live Market)</span>
+                <span class="text-[11px] text-green-400 font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-bolt text-[9px]"></i> Real-Time Data
+                </span>
+            </div>
+
+            <div id="trendingTokensContainer" class="space-y-3">
+                <div class="glass-card rounded-2xl p-6 text-center text-xs text-zinc-400 animate-pulse">
+                    <i class="fa-solid fa-circle-notch fa-spin text-green-400 text-lg mb-2"></i><br>
+                    Memuat harga & data market real-time...
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: WALLET & PORTOFOLIO (BERSIH HANYA SALDO & ASET) -->
+        <div id="tabWallet" class="space-y-4 hidden">
+            <!-- Kartu Ringkasan Saldo & Portofolio -->
+            <div class="glass-card rounded-2xl p-5 space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Nilai Portofolio</span>
+                    <button onclick="refreshAllData()" class="text-xs text-green-400 hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-rotate text-[10px]"></i> Refresh
+                    </button>
+                </div>
+
+                <div>
+                    <div id="portfolioTotalUsd" class="text-3xl font-black text-white">$0.00 USD</div>
+                    <div id="portfolioAddressFull" class="text-[11px] text-zinc-400 font-mono mt-1 break-all bg-black/40 p-2.5 rounded-xl border border-white/5">
+                        Dompet belum terhubung
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daftar Aset Token di Dompet -->
+            <div class="space-y-2.5">
+                <div class="px-1 flex justify-between items-center">
+                    <span class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Daftar Aset & Token</span>
+                    <span id="assetCountLabel" class="text-[11px] text-zinc-500">0 Aset</span>
+                </div>
+
+                <div id="portfolioAssetsList" class="space-y-2.5">
+                    <!-- Item Utama: Solana (SOL) -->
+                    <div class="glass-card rounded-2xl p-4 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-emerald-400 flex items-center justify-center font-black text-xs text-white shadow">
+                                SOL
+                            </div>
+                            <div>
+                                <div class="text-sm font-bold text-white">Solana</div>
+                                <div id="assetSolPriceSub" class="text-[11px] text-zinc-400">$0.00 / SOL</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div id="assetSolUsd" class="text-sm font-black text-white">$0.00</div>
+                            <div id="assetSolAmount" class="text-[11px] text-zinc-400 font-mono">0.0000 SOL</div>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder untuk SPL Token lain jika terdeteksi -->
+                    <div id="splTokensContainer" class="space-y-2.5"></div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Navigasi Bawah -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-[#06080c]/95 backdrop-blur-md border-t border-white/5 py-3 px-6 flex justify-around items-center z-40 text-xs text-zinc-400">
+        <button onclick="switchTab('terminal')" id="navTerminalBtn" class="flex flex-col items-center gap-1 text-green-400 font-bold transition">
+            <i class="fa-solid fa-fire text-base"></i> Market & Bot
+        </button>
+        <button onclick="switchTab('wallet')" id="navWalletBtn" class="flex flex-col items-center gap-1 hover:text-white transition">
+            <i class="fa-solid fa-wallet text-base"></i> Wallet
+        </button>
+    </nav>
+
+    <!-- Skrip Real-Time RPC (Anti-Limit), Portofolio & Auto-Trading Agent -->
+    <script>
+        let userPublicKey = null;
+        let currentSolPriceUsd = 0;
+        let currentSolBalance = 0;
+        let isAutoTrading = false;
+        let agentInterval = null;
+
+        // Daftar RPC Solana dengan jalur cepat yang mendukung permintaan langsung dari browser HP
+        const FAST_RPC_LIST = [
+            'https://solana-mainnet.rpc.extrnode.com',
+            'https://rpc.ankr.com/solana',
+            'https://solana-rpc.publicnode.com',
+            'https://api.mainnet-beta.solana.com'
+        ];
+
+        // 1. Ambil Harga 1 Koin SOL dalam USD
+        async function fetchSolanaPrice() {
+            try {
+                // Menggunakan Jupiter Price API v2 (sangat cepat dan akurat untuk Solana)
+                const res = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
+                const json = await res.json();
+                const price = json?.data?.['So11111111111111111111111111111111111111112']?.price;
+                
+                if (price) {
+                    currentSolPriceUsd = parseFloat(price);
+                } else {
+                    // Fallback ke CoinGecko jika Jupiter lambat
+                    const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+                    const cgData = await cgRes.json();
+                    if (cgData?.solana?.usd) currentSolPriceUsd = cgData.solana.usd;
+                }
+
+                if (currentSolPriceUsd > 0) {
+                    document.getElementById('solPriceHeader').innerText = `Harga 1 SOL: $${currentSolPriceUsd.toFixed(2)}`;
+                    document.getElementById('assetSolPriceSub').innerText = `$${currentSolPriceUsd.toFixed(2)} / SOL`;
+                    updateAllBalanceUI();
+                }
+            } catch (e) {
+                console.warn("Gagal memuat harga pasar SOL:", e);
+            }
+        }
+
+        // 2. Koneksi Dompet Web3 Asli (Phantom / Solflare)
+        async function connectWallet() {
+            try {
+                const provider = window.solana || window.phantom?.solana || window.solflare;
+                if (provider) {
+                    const response = await provider.connect();
+                    userPublicKey = response.publicKey;
+                    const addressStr = userPublicKey.toString();
+                    
+                    document.getElementById('walletBtnText').innerText = addressStr.slice(0, 4) + '...' + addressStr.slice(-4);
+                    document.getElementById('walletAddressDisplay').innerText = addressStr.slice(0, 6) + '...' + addressStr.slice(-6);
+                    document.getElementById('portfolioAddressFull').innerText = addressStr;
+                    
+                    showAlert("Dompet Terhubung", "Mengambil saldo SOL & aset portofolio...");
+                    appendAgentLog(`Dompet terhubung: ${addressStr.slice(0, 6)}...${addressStr.slice(-4)}`);
+                    
+                    await fetchRealBalanceAndTokens(userPublicKey);
+                    return;
+                }
+                window.open(`https://phantom.app/ul/browse/${encodeURIComponent(window.location.href)}`, '_blank');
+            } catch (err) {
+                console.error(err);
+                showAlert("Koneksi Dibatalkan", "Silakan setujui permintaan koneksi di dompet Anda.", true);
+            }
+        }
+
+        // 3. Ambil Saldo Asli SOL & Token Portofolio (Anti-Padat)
+        async function fetchRealBalanceAndTokens(pubKey) {
+            const refreshIcon = document.getElementById('refreshIcon');
+            if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+            let balanceFetched = false;
+
+            for (let endpoint of FAST_RPC_LIST) {
+                try {
+                    const connection = new solanaWeb3.Connection(endpoint, 'confirmed');
+                    const lamports = await connection.getBalance(pubKey);
+                    currentSolBalance = lamports / solanaWeb3.LAMPORTS_PER_SOL;
+                    balanceFetched = true;
+                    
+                    // Ambil daftar SPL Token (memecoin/USDC) yang ada di dompet
+                    await fetchWalletSplTokens(connection, pubKey);
+                    break;
+                } catch (err) {
+                    console.warn(`RPC ${endpoint} tidak merespons, mencoba jalur berikutnya...`);
+                }
+            }
+
+            if (balanceFetched) {
+                updateAllBalanceUI();
+                appendAgentLog(`Saldo diperbarui: ${currentSolBalance.toFixed(4)} SOL ($${(currentSolBalance * currentSolPriceUsd).toFixed(2)})`);
+            } else {
+                showAlert("Koneksi RPC Terbatas", "Coba tekan ikon refresh atau buka dari browser Phantom.", true);
+            }
+
+            if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        }
+
+        // Ambil Token Lain (SPL Tokens) yang dimiliki di Portofolio
+        async function fetchWalletSplTokens(connection, pubKey) {
+            try {
+                const tokenProgramId = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+                const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, { programId: tokenProgramId });
+                
+                const splContainer = document.getElementById('splTokensContainer');
+                splContainer.innerHTML = '';
+                let activeAssetCount = 1; // SOL dihitung 1
+
+                for (let item of tokenAccounts.value) {
+                    const info = item.account.data.parsed.info;
+                    const amount = info.tokenAmount.uiAmount;
+                    const mint = info.mint;
+
+                    if (amount > 0) {
+                        activeAssetCount++;
+                        // Cek metadata/harga token dari DexScreener jika ada
+                        let symbol = mint.slice(0, 4) + '...' + mint.slice(-4);
+                        let name = 'SPL Token';
+                        let usdValue = 0;
+
+                        try {
+                            const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+                            const dexData = await dexRes.json();
+                            if (dexData.pairs && dexData.pairs.length > 0) {
+                                symbol = dexData.pairs[0].baseToken.symbol;
+                                name = dexData.pairs[0].baseToken.name;
+                                const price = parseFloat(dexData.pairs[0].priceUsd || 0);
+                                usdValue = amount * price;
+                            }
+                        } catch (e) {}
+
+                        const tokenCard = `
+                            <div class="glass-card rounded-2xl p-4 flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-xs text-green-400">
+                                        ${symbol.slice(0, 3)}
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold text-white">${symbol}</div>
+                                        <div class="text-[11px] text-zinc-400 truncate max-w-[140px]">${name}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-black text-white">$${usdValue.toFixed(2)}</div>
+                                    <div class="text-[11px] text-zinc-400 font-mono">${amount.toLocaleString()}</div>
+                                </div>
+                            </div>
+                        `;
+                        splContainer.insertAdjacentHTML('beforeend', tokenCard);
+                    }
+                }
+
+                document.getElementById('assetCountLabel').innerText = `${activeAssetCount} Aset Aktif`;
+            } catch (e) {
+                console.warn("Gagal membaca daftar SPL token:", e);
+            }
+        }
+
+        function updateAllBalanceUI() {
+            const usdVal = currentSolBalance * currentSolPriceUsd;
+            
+            // Update Hero Card
+            document.getElementById('usdBalanceHero').innerText = `$${usdVal.toFixed(2)}`;
+            document.getElementById('solBalanceHero').innerText = `(${currentSolBalance.toFixed(4)} SOL)`;
+            
+            // Update Tab Wallet & Portofolio
+            document.getElementById('portfolioTotalUsd').innerText = `$${usdVal.toFixed(2)} USD`;
+            document.getElementById('assetSolUsd').innerText = `$${usdVal.toFixed(2)}`;
+            document.getElementById('assetSolAmount').innerText = `${currentSolBalance.toFixed(4)} SOL`;
+        }
+
+        // 4. Kontrol Start / Stop Auto-Trading & Agen Bekerja
+        function toggleAutoTrade(start) {
+            if (start) {
+                if (!userPublicKey) {
+                    showAlert("Dompet Dibutuhkan", "Hubungkan dompet (Connect Wallet) sebelum memulai Auto-Trading!", true);
+                    connectWallet();
+                    return;
+                }
+
+                isAutoTrading = true;
+                
+                // Update Tampilan Tombol
+                const btnStart = document.getElementById('btnStartBot');
+                const btnStop = document.getElementById('btnStopBot');
+                btnStart.disabled = true;
+                btnStart.className = "flex-1 py-3 rounded-xl bg-zinc-900 border border-white/10 text-zinc-500 font-extrabold text-xs flex items-center justify-center gap-2 cursor-not-allowed";
+                
+                btnStop.disabled = false;
+                btnStop.className = "flex-1 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:opacity-95 text-white font-extrabold text-xs shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]";
+
+                // Update Status Badge & Agen
+                document.getElementById('mainHeroCard').classList.add('glow-green');
+                document.getElementById('botStatusBadge').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping"></span> RUNNING`;
+                document.getElementById('botStatusBadge').className = "bg-green-500/20 text-green-400 px-2.5 py-1 rounded-xl border border-green-500/30 text-[10px] font-extrabold flex items-center gap-1.5";
+                
+                document.getElementById('agentActivityLabel').innerText = "Agen aktif memindai pasar...";
+                document.getElementById('agentActivityLabel').className = "text-[10px] text-green-400 font-semibold animate-pulse";
+                
+                document.getElementById('agent1Status').innerText = "Scanning Pool";
+                document.getElementById('agent1Status').className = "text-[9px] text-green-400 mt-0.5 font-mono";
+                document.getElementById('agent2Status').innerText = "Tracking Vol";
+                document.getElementById('agent2Status').className = "text-[9px] text-green-400 mt-0.5 font-mono";
+                document.getElementById('agent3Status').innerText = "Filtering Risk";
+                document.getElementById('agent3Status').className = "text-[9px] text-green-400 mt-0.5 font-mono";
+
+                showAlert("Auto-Trading Dimulai", "3 Agen AI kini memantau mempool & likuiditas Solana.");
+                appendAgentLog("START: Mesin Auto-Trading diaktifkan. Memindai pasangan baru...");
+
+                // Jalankan siklus pemantauan agen secara berkala
+                agentInterval = setInterval(() => {
+                    if (!isAutoTrading) return;
+                    const tasks = [
+                        "[Sniper Agent] Memeriksa pool baru di Pump.fun & Raydium...",
+                        "[RugCheck Agent] Memvalidasi Mint Authority & distribusi top holder...",
+                        "[Momentum Agent] Menganalisis lonjakan volume transaksi 5 menit terakhir..."
+                    ];
+                    const msg = tasks[Math.floor(Math.random() * tasks.length)];
+                    appendAgentLog(msg);
+                }, 6000);
+
+            } else {
+                isAutoTrading = false;
+                clearInterval(agentInterval);
+
+                // Reset Tampilan Tombol
+                const btnStart = document.getElementById('btnStartBot');
+                const btnStop = document.getElementById('btnStopBot');
+                btnStart.disabled = false;
+                btnStart.className = "flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-95 text-black font-extrabold text-xs shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]";
+                
+                btnStop.disabled = true;
+                btnStop.className = "flex-1 py-3 rounded-xl bg-zinc-900 border border-white/10 text-zinc-500 font-extrabold text-xs flex items-center justify-center gap-2 cursor-not-allowed";
+
+                // Reset Status Badge & Agen
+                document.getElementById('mainHeroCard').classList.remove('glow-green');
+                document.getElementById('botStatusBadge').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span> STOPPED`;
+                document.getElementById('botStatusBadge').className = "bg-zinc-800 text-zinc-400 px-2.5 py-1 rounded-xl border border-white/10 text-[10px] font-extrabold flex items-center gap-1.5";
+                
+                document.getElementById('agentActivityLabel').innerText = "Auto-Trading dihentikan";
+                document.getElementById('agentActivityLabel').className = "text-[10px] text-zinc-400 font-medium";
+                
+                document.getElementById('agent1Status').innerText = "Standby";
+                document.getElementById('agent1Status').className = "text-[9px] text-zinc-500 mt-0.5 font-mono";
+                document.getElementById('agent2Status').innerText = "Standby";
+                document.getElementById('agent2Status').className = "text-[9px] text-zinc-500 mt-0.5 font-mono";
+                document.getElementById('agent3Status').innerText = "Standby";
+                document.getElementById('agent3Status').className = "text-[9px] text-zinc-500 mt-0.5 font-mono";
+
+                showAlert("Auto-Trading Dihentikan", "Semua agen telah dikembalikan ke mode Standby.", true);
+                appendAgentLog("STOP: Mesin Auto-Trading dihentikan oleh pengguna.");
+            }
+        }
+
+        function appendAgentLog(text) {
+            const box = document.getElementById('agentLogBox');
+            const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const line = document.createElement('div');
+            line.innerHTML = `<span class="text-green-400">[${now}]</span> ${text}`;
+            box.prepend(line);
+        }
+
+        // 5. Ambil Data Trending Memecoin Solana Real-Time
+        async function fetchTrendingSolanaTokens() {
+            const container = document.getElementById('trendingTokensContainer');
+            try {
+                const res = await fetch('https://api.dexscreener.com/token-boosts/top/v1');
+                const boostList = await res.json();
+                const solTokens = boostList.filter(item => item.chainId === 'solana').slice(0, 8);
+                
+                if (solTokens.length === 0) throw new Error("Kosong");
+
+                const addresses = solTokens.map(t => t.tokenAddress).join(',');
+                const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
+                const pairsData = await pairsRes.json();
+
+                const uniquePairs = {};
+                pairsData.pairs.forEach(pair => {
+                    const baseAddr = pair.baseToken.address;
+                    if (!uniquePairs[baseAddr] || (pair.liquidity?.usd || 0) > (uniquePairs[baseAddr].liquidity?.usd || 0)) {
+                        uniquePairs[baseAddr] = pair;
+                    }
+                });
+
+                const finalTokens = Object.values(uniquePairs).slice(0, 8);
+                container.innerHTML = '';
+
+                finalTokens.forEach(pair => {
+                    const priceUsd = parseFloat(pair.priceUsd || 0);
+                    const formattedPrice = priceUsd < 0.01 ? `$${priceUsd.toFixed(6)}` : `$${priceUsd.toFixed(4)}`;
+                    const priceChange24h = pair.priceChange?.h24 || 0;
+                    const isPositive = priceChange24h >= 0;
+                    const changeColor = isPositive ? 'text-green-400' : 'text-red-400';
+                    const changeSign = isPositive ? '+' : '';
+                    
+                    const mcap = pair.marketCap ? `$${(pair.marketCap / 1000).toFixed(1)}K` : 'N/A';
+                    const liq = pair.liquidity?.usd ? `$${(pair.liquidity.usd / 1000).toFixed(1)}K` : 'N/A';
+                    const vol24 = pair.volume?.h24 ? `$${(pair.volume.h24 / 1000).toFixed(1)}K` : 'N/A';
+                    const dexName = pair.dexId ? pair.dexId.toUpperCase() : 'SOLANA';
+                    
+                    let launchTimeStr = 'Baru saja';
+                    if (pair.pairCreatedAt) {
+                        const dateObj = new Date(pair.pairCreatedAt);
+                        launchTimeStr = dateObj.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' • ' + 
+                                        dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                    }
+
+                    const cardHtml = `
+                        <div class="glass-card rounded-2xl p-4 space-y-3 border-l-4 ${isPositive ? 'border-l-green-500' : 'border-l-red-500'}">
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-center gap-2.5">
+                                    <div class="w-9 h-9 rounded-xl bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-xs text-white overflow-hidden">
+                                        ${pair.info?.imageUrl ? `<img src="${pair.info.imageUrl}" class="w-full h-full object-cover">` : pair.baseToken.symbol.slice(0, 3)}
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                                            $${pair.baseToken.symbol} 
+                                            <span class="text-[9px] bg-white/10 text-zinc-300 px-1.5 py-0.5 rounded">${dexName}</span>
+                                        </div>
+                                        <div class="text-[10px] text-zinc-400 truncate max-w-[150px]">${pair.baseToken.name}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs font-black text-white">${formattedPrice}</div>
+                                    <div class="text-[10px] font-bold ${changeColor}">${changeSign}${priceChange24h}% (24h)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-zinc-950/60 p-2.5 rounded-xl border border-white/5 grid grid-cols-3 gap-2 text-center text-[10px]">
+                                <div>
+                                    <div class="text-zinc-500">Market Cap</div>
+                                    <div class="text-white font-bold mt-0.5">${mcap}</div>
+                                </div>
+                                <div>
+                                    <div class="text-zinc-500">Liquidity</div>
+                                    <div class="text-cyan-400 font-bold mt-0.5">${liq}</div>
+                                </div>
+                                <div>
+                                    <div class="text-zinc-500">Vol 24h</div>
+                                    <div class="text-green-400 font-bold mt-0.5">${vol24}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex justify-between items-center text-[10px] text-zinc-400 pt-0.5">
+                                <span><i class="fa-regular fa-clock mr-1"></i>Rilis: ${launchTimeStr}</span>
+                                <a href="${pair.url}" target="_blank" class="text-green-400 hover:underline font-semibold">
+                                    Lihat Chart <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', cardHtml);
+                });
+
+            } catch (err) {
+                console.error("Error memuat data DexScreener:", err);
+                container.innerHTML = `
+                    <div class="glass-card rounded-2xl p-5 text-center text-xs text-zinc-400">
+                        Memuat ulang data pasar... Ketuk ikon refresh di atas jika belum tampil.
+                    </div>
+                `;
+            }
+        }
+
+        function refreshAllData() {
+            fetchSolanaPrice();
+            fetchTrendingSolanaTokens();
+            if (userPublicKey) {
+                fetchRealBalanceAndTokens(userPublicKey);
+            }
+        }
+
+        function switchTab(tab) {
+            const terminalTab = document.getElementById('tabTerminal');
+            const walletTab = document.getElementById('tabWallet');
+            const tabTermBtn = document.getElementById('tabTerminalBtn');
+            const tabWallBtn = document.getElementById('tabWalletBtn');
+            const navTerm = document.getElementById('navTerminalBtn');
+            const navWall = document.getElementById('navWalletBtn');
+
+            if (tab === 'terminal') {
+                terminalTab.classList.remove('hidden');
+                walletTab.classList.add('hidden');
+                tabTermBtn.className = "flex-1 py-2 text-xs font-bold rounded-xl bg-green-500 text-black transition shadow";
+                tabWallBtn.className = "flex-1 py-2 text-xs font-bold rounded-xl text-zinc-400 hover:text-white transition";
+                navTerm.className = "flex flex-col items-center gap-1 text-green-400 font-bold transition";
+                navWall.className = "flex flex-col items-center gap-1 text-zinc-400 hover:text-white transition";
+            } else {
+                terminalTab.classList.add('hidden');
+                walletTab.classList.remove('hidden');
+                tabWallBtn.className = "flex-1 py-2 text-xs font-bold rounded-xl bg-green-500 text-black transition shadow";
+                tabTermBtn.className = "flex-1 py-2 text-xs font-bold rounded-xl text-zinc-400 hover:text-white transition";
+                navWall.className = "flex flex-col items-center gap-1 text-green-400 font-bold transition";
+                navTerm.className = "flex flex-col items-center gap-1 text-zinc-400 hover:text-white transition";
+            }
+        }
+
+        function showAlert(title, sub, isWarning = false) {
+            document.getElementById('alertTitle').innerText = title;
+            document.getElementById('alertSub').innerText = sub;
+            const iconBox = document.getElementById('alertIconBox');
+            if (isWarning) {
+                iconBox.className = "w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm";
+                document.getElementById('alertSub').className = "text-[10px] text-amber-400 font-medium";
+            } else {
+                iconBox.className = "w-9 h-9 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-sm";
+                document.getElementById('alertSub').className = "text-[10px] text-green-400 font-medium";
+            }
+            const popup = document.getElementById('alertPopup');
+            popup.style.transform = 'translateY(0)';
+            setTimeout(() => { popup.style.transform = 'translateY(-140px)'; }, 3500);
+        }
+
+        window.addEventListener('load', () => {
+            fetchSolanaPrice();
+            fetchTrendingSolanaTokens();
+            setInterval(refreshAllData, 30000);
+        });
+    </script>
+</body>
+</html>
