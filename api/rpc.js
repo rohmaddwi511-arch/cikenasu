@@ -11,7 +11,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Hanya terima permintaan dari domain app sendiri
-  const origin = req.headers.origin;
+  const origin = req.headers.origin;i
   if (origin) {
     let host = '';
     try { host = new URL(origin).host; } catch (e) {}
